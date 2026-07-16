@@ -1,7 +1,3 @@
-
-base_dir = "/mnt/agents/output/healpath-server"
-
-# ===== server.js معدل مع لوحة أدمن =====
 server_js = r'''const express = require('express');
 const fs = require('fs');
 const path = require('path');
