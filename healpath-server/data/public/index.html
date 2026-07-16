@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HealPath - تسجيل الدخول</title>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        :root { --primary: #2D8B5E; --primary-light: #3BA870; --primary-dark: #1E6B47; --card-bg: #FFFFFF; --bg: #F0F4F0; --text: #1A1A2E; --text-light: #6B7280; --border: #E5E7EB; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Tajawal', sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #1E6B47 0%, #2D8B5E 50%, #3BA870 100%); position: relative; overflow: hidden; }
+        body::before { content: ''; position: absolute; width: 600px; height: 600px; background: rgba(255,255,255,0.05); border-radius: 50%; top: -200px; right: -200px; }
+        .login-box { background: var(--card-bg); border-radius: 16px; padding: 40px; width: 100%; max-width: 420px; box-shadow: 0 10px 40px rgba(0,0,0,0.12); animation: slideUp 0.6s ease; position: relative; z-index: 1; margin: 20px; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        .logo { text-align: center; margin-bottom: 35px; }
+        .logo i { font-size: 50px; color: var(--primary); margin-bottom: 10px; display: block; }
+        .logo h1 { font-size: 32px; font-weight: 800; color: var(--primary); letter-spacing: 1px; }
+        .logo p { color: var(--text-light); font-size: 15px; }
+        .input-group { position: relative; margin-bottom: 20px; }
+        .input-group i { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); color: var(--text-light); font-size: 16px; }
+        .input-group input { width: 100%; padding: 14px 45px 14px 16px; border: 2px solid var(--border); border-radius: 10px; font-family: 'Tajawal', sans-serif; font-size: 15px; transition: all 0.3s; background: var(--bg); }
+        .input-group input:focus { outline: none; border-color: var(--primary); background: var(--card-bg); box-shadow: 0 0 0 4px rgba(45,139,94,0.1); }
+        .login-btn { width: 100%; padding: 14px; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; border: none; border-radius: 10px; font-family: 'Tajawal', sans-serif; font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(45,139,94,0.3); }
+        .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .register-link { text-align: center; margin-top: 20px; color: var(--text-light); font-size: 14px; }
+        .register-link a { color: var(--primary); text-decoration: none; font-weight: 700; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(5px); align-items: center; justify-content: center; }
+        .modal.show { display: flex; }
+        .modal-content { background: var(--card-bg); padding: 30px; border-radius: 16px; width: 90%; max-width: 400px; position: relative; animation: slideUp 0.3s ease; }
+        .modal-content h2 { margin-bottom: 20px; color: var(--primary); display: flex; align-items: center; gap: 10px; }
+        .close { position: absolute; left: 20px; top: 20px; font-size: 28px; cursor: pointer; color: var(--text-light); }
+        .notification { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 15px 30px; border-radius: 10px; color: white; font-weight: 700; z-index: 9999; animation: slideDown 0.3s ease; }
+        @keyframes slideDown { from { opacity: 0; transform: translateX(-50%) translateY(-20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+        .loading { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: white; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <div class="logo">
+            <i class="fas fa-leaf"></i>
+            <h1>HealPath</h1>
+            <p>مسارك نحو التعافي</p>
+        </div>
+        <form id="loginForm">
+            <div class="input-group">
+                <i class="fas fa-user"></i>
+                <input type="text" id="username" placeholder="اسم المستخدم" required>
+            </div>
+            <div class="input-group">
+                <i class="fas fa-lock"></i>
+                <input type="password" id="password" placeholder="كلمة المرور" required>
+            </div>
+            <button type="submit" class="login-btn" id="loginBtn">
+                <i class="fas fa-sign-in-alt"></i> دخول
+            </button>
+        </form>
+        <p class="register-link">ما عندك حساب؟ <a href="#" onclick="showRegister()">سجل الآن</a></p>
+    </div>
+
+    <div id="registerModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeRegister()">&times;</span>
+            <h2><i class="fas fa-user-plus"></i> تسجيل حساب جديد</h2>
+            <form id="registerForm">
+                <div class="input-group">
+                    <i class="fas fa-user"></i>
+                    <input type="text" id="regUsername" placeholder="اسم المستخدم" required>
+                </div>
+                <div class="input-group">
+                    <i class="fas fa-lock"></i>
+                    <input type="password" id="regPassword" placeholder="كلمة المرور" required>
+                </div>
+                <button type="submit" class="login-btn" id="regBtn">
+                    <i class="fas fa-check"></i> تسجيل
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '';
+
+        function showNotification(message, type) {
+            const notif = document.createElement('div');
+            notif.className = 'notification';
+            notif.style.background = type === 'success' ? '#2D8B5E' : '#EF4444';
+            notif.textContent = message;
+            document.body.appendChild(notif);
+            setTimeout(() => notif.remove(), 3000);
+        }
+
+        function setLoading(btn, loading) {
+            btn.disabled = loading;
+            btn.innerHTML = loading ? '<span class="loading"></span> جاري...' : btn.dataset.original;
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('loginBtn');
+            btn.dataset.original = btn.innerHTML;
+            setLoading(btn, true);
+            
+            try {
+                const res = await fetch(`${API_URL}/api/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value.trim(),
+                        password: document.getElementById('password').value
+                    })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    localStorage.setItem('healpath_token', data.token);
+                    localStorage.setItem('healpath_user', JSON.stringify(data.user));
+                    showNotification('تم تسجيل الدخول!', 'success');
+                    setTimeout(() => window.location.href = '/dashboard', 500);
+                } else {
+                    showNotification(data.error || 'خطأ في تسجيل الدخول', 'error');
+                }
+            } catch (err) {
+                showNotification('خطأ في الاتصال بالسيرفر', 'error');
+            }
+            setLoading(btn, false);
+        });
+
+        document.getElementById('registerForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const username = document.getElementById('regUsername').value.trim();
+            const password = document.getElementById('regPassword').value;
+            if (username.length < 3) { showNotification('اسم المستخدم يجب أن يكون 3 أحرف على الأقل', 'error'); return; }
+            if (password.length < 4) { showNotification('كلمة المرور يجب أن تكون 4 أحرف على الأقل', 'error'); return; }
+            
+            const btn = document.getElementById('regBtn');
+            btn.dataset.original = btn.innerHTML;
+            setLoading(btn, true);
+            
+            try {
+                const res = await fetch(`${API_URL}/api/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    localStorage.setItem('healpath_token', data.token);
+                    localStorage.setItem('healpath_user', JSON.stringify(data.user));
+                    showNotification('تم إنشاء الحساب بنجاح!', 'success');
+                    setTimeout(() => window.location.href = '/dashboard', 500);
+                } else {
+                    showNotification(data.error || 'خطأ في التسجيل', 'error');
+                }
+            } catch (err) {
+                showNotification('خطأ في الاتصال بالسيرفر', 'error');
+            }
+            setLoading(btn, false);
+        });
+
+        function showRegister() { document.getElementById('registerModal').classList.add('show'); }
+        function closeRegister() { document.getElementById('registerModal').classList.remove('show'); }
+        window.onclick = function(e) { if (e.target === document.getElementById('registerModal')) closeRegister(); };
+    </script>
+</body>
+</html>
