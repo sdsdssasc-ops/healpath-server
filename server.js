@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const multer = require('multer');
 const cors = require('cors');
 
 const app = express();
@@ -24,11 +23,9 @@ const VIDEOS_DIR = path.join(PUBLIC_DIR, 'videos');
 // ===== ملفات البيانات =====
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const CHATS_FILE = path.join(DATA_DIR, 'chats.json');
-const TICKETS_FILE = path.join(DATA_DIR, 'tickets.json');
-const VIDEOS_FILE = path.join(DATA_DIR, 'videos.json');
 
 // لو الملفات ما موجودة، سويها فاضية
-[USERS_FILE, CHATS_FILE, TICKETS_FILE, VIDEOS_FILE].forEach(file => {
+[USERS_FILE, CHATS_FILE].forEach(file => {
     if (!fs.existsSync(file)) fs.writeFileSync(file, '[]');
 });
 
@@ -46,24 +43,6 @@ app.use(cors());
 app.use(express.json());
 app.use('/videos', express.static(VIDEOS_DIR));
 
-// ===== رفع الفيديوهات =====
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, VIDEOS_DIR),
-    filename: (req, file, cb) => {
-        const uniqueName = Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname);
-        cb(null, uniqueName);
-    }
-});
-
-const upload = multer({ 
-    storage,
-    limits: { fileSize: 500 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith('video/')) cb(null, true);
-        else cb(new Error('يرجى رفع فيديو فقط'));
-    }
-});
-
 // ===== التحقق من تسجيل الدخول =====
 function authMiddleware(req, res, next) {
     const token = req.headers.authorization?.split(' ')[1];
@@ -76,10 +55,10 @@ function authMiddleware(req, res, next) {
 app.post('/api/register', async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
-    
+
     const users = readJSON(USERS_FILE);
     if (users.find(u => u.username === username)) return res.status(400).json({ error: 'اسم المستخدم مستخدم' });
-    
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = {
         id: Date.now().toString(),
@@ -87,21 +66,12 @@ app.post('/api/register', async (req, res) => {
         password: hashedPassword,
         createdAt: new Date().toISOString(),
         videosWatched: 0,
-        supportChats: 0,
         streak: 0,
         lastVisit: null
     };
     users.push(newUser);
     writeJSON(USERS_FILE, users);
-    
-    // سوي محادثة فارغة للمستخدم
-    const chats = readJSON(CHATS_FILE);
-    chats.push({ 
-        userId: newUser.id, 
-        messages: [{ type: 'system', text: '👋 مرحباً! كيف يمكننا مساعدتك اليوم؟', time: new Date().toISOString() }] 
-    });
-    writeJSON(CHATS_FILE, chats);
-    
+
     const token = jwt.sign({ id: newUser.id, username: newUser.username }, JWT_SECRET);
     res.json({ token, user: { id: newUser.id, username: newUser.username } });
 });
@@ -112,10 +82,10 @@ app.post('/api/login', async (req, res) => {
     const users = readJSON(USERS_FILE);
     const user = users.find(u => u.username === username);
     if (!user) return res.status(400).json({ error: 'المستخدم غير موجود' });
-    
+
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(400).json({ error: 'كلمة المرور غير صحيحة' });
-    
+
     // تحديث التتابع اليومي
     const today = new Date().toDateString();
     if (user.lastVisit !== today) {
@@ -125,7 +95,7 @@ app.post('/api/login', async (req, res) => {
         user.lastVisit = today;
         writeJSON(USERS_FILE, users);
     }
-    
+
     const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET);
     res.json({ 
         token, 
@@ -134,7 +104,6 @@ app.post('/api/login', async (req, res) => {
             username: user.username,
             daysRecovery: Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000*60*60*24)),
             videosWatched: user.videosWatched || 0,
-            supportChats: user.supportChats || 0,
             streak: user.streak || 0
         } 
     });
@@ -150,106 +119,32 @@ app.get('/api/me', authMiddleware, (req, res) => {
         username: user.username,
         daysRecovery: Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000*60*60*24)),
         videosWatched: user.videosWatched || 0,
-        supportChats: user.supportChats || 0,
         streak: user.streak || 0
     });
 });
 
-// ===== API: المحادثة =====
-app.get('/api/chat', authMiddleware, (req, res) => {
-    const chats = readJSON(CHATS_FILE);
-    const chat = chats.find(c => c.userId === req.user.id);
-    res.json(chat ? chat.messages : []);
-});
-
-app.post('/api/chat', authMiddleware, (req, res) => {
-    const { text } = req.body;
-    const chats = readJSON(CHATS_FILE);
-    let chat = chats.find(c => c.userId === req.user.id);
-    if (!chat) { chat = { userId: req.user.id, messages: [] }; chats.push(chat); }
-    
-    // رسالة المستخدم
-    chat.messages.push({ type: 'sent', text, time: new Date().toISOString() });
-    
-    // رد تلقائي
-    const replies = [
-        'شكراً لتواصلك معنا! فريق الدعم سيقوم بالرد عليك قريباً.',
-        'نقدر ثقتك بنا. نحن هنا لمساعدتك في أي وقت.',
-        'تم استلام رسالتك. سيتواصل معك أحد المختصين قريباً.',
-        'نحن معك في كل خطوة. استمر! 💪'
+// ===== API: الفيديوهات (للجميع - بدون تسجيل) =====
+app.get('/api/videos', (req, res) => {
+    const videos = [
+        { id: '1', title: 'جلسة التنفس العميق', desc: 'تعلم تقنيات التنفس للاسترخاء', duration: '15:30', src: '/videos/video1.mp4', views: 1240 },
+        { id: '2', title: 'التأمل الصباحي', desc: 'ابدأ يومك بهدوء وتركيز', duration: '10:00', src: '/videos/video2.mp4', views: 890 },
+        { id: '3', title: 'تمارين الاسترخاء', desc: 'تخلص من التوتر والقلق', duration: '20:45', src: '/videos/video3.mp4', views: 2100 },
+        { id: '4', title: 'النوم الصحي', desc: 'نصائح لنوم هادئ ومريح', duration: '12:15', src: '/videos/video4.mp4', views: 1560 },
+        { id: '5', title: 'التحكم بالغضب', desc: 'تقنيات إدارة الغضب بفعالية', duration: '18:20', src: '/videos/video5.mp4', views: 980 },
+        { id: '6', title: 'التفكير الإيجابي', desc: 'بني عقلية إيجابية', duration: '14:50', src: '/videos/video6.mp4', views: 3200 }
     ];
-    chat.messages.push({ 
-        type: 'received', 
-        text: replies[Math.floor(Math.random() * replies.length)], 
-        time: new Date().toISOString() 
-    });
-    
-    writeJSON(CHATS_FILE, chats);
-    
-    // تحديث عدد المحادثات
-    const users = readJSON(USERS_FILE);
-    const user = users.find(u => u.id === req.user.id);
-    if (user) { user.supportChats = (user.supportChats || 0) + 1; writeJSON(USERS_FILE, users); }
-    
-    res.json({ messages: chat.messages });
+    res.json(videos);
 });
 
-// ===== API: الدعم الفني =====
-app.get('/api/tickets', authMiddleware, (req, res) => {
-    res.json(readJSON(TICKETS_FILE).filter(t => t.userId === req.user.id));
-});
-
-app.post('/api/tickets', authMiddleware, (req, res) => {
-    const { type, subject, details } = req.body;
-    const tickets = readJSON(TICKETS_FILE);
-    const ticket = {
-        id: Date.now().toString(),
-        userId: req.user.id,
-        type, subject, details,
-        status: 'pending',
-        date: new Date().toISOString()
-    };
-    tickets.push(ticket);
-    writeJSON(TICKETS_FILE, tickets);
-    res.json(ticket);
-});
-
-// ===== API: الفيديوهات =====
-app.get('/api/videos', (req, res) => res.json(readJSON(VIDEOS_FILE)));
-
-app.post('/api/videos', authMiddleware, upload.single('video'), (req, res) => {
-    if (!req.file) return res.status(400).json({ error: 'لم يتم رفع الفيديو' });
-    
-    const videos = readJSON(VIDEOS_FILE);
-    const newVideo = {
-        id: Date.now().toString(),
-        title: req.body.title || req.file.originalname.replace(/\.[^/.]+$/, ''),
-        desc: req.body.desc || 'فيديو مضاف حديثاً',
-        filename: req.file.filename,
-        src: `/videos/${req.file.filename}`,
-        duration: req.body.duration || '00:00',
-        views: 0,
-        uploadedBy: req.user.id,
-        uploadedAt: new Date().toISOString()
-    };
-    videos.push(newVideo);
-    writeJSON(VIDEOS_FILE, videos);
-    res.json(newVideo);
-});
-
+// ===== API: مشاهدة فيديو =====
 app.post('/api/videos/:id/watch', authMiddleware, (req, res) => {
-    const videos = readJSON(VIDEOS_FILE);
-    const video = videos.find(v => v.id === req.params.id);
-    if (video) { video.views = (video.views || 0) + 1; writeJSON(VIDEOS_FILE, videos); }
-    
     const users = readJSON(USERS_FILE);
     const user = users.find(u => u.id === req.user.id);
     if (user) { user.videosWatched = (user.videosWatched || 0) + 1; writeJSON(USERS_FILE, users); }
-    
     res.json({ success: true });
 });
 
-// ===== صفحة تسجيل الدخول (داخل السيرفر) =====
+// ===== صفحة تسجيل الدخول =====
 const LOGIN_PAGE = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -309,17 +204,259 @@ document.getElementById('registerForm').addEventListener('submit',async function
 </body>
 </html>`;
 
+// ===== صفحة الداشبورد =====
+const DASHBOARD_PAGE = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HealPath - لوحة التحكم</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+:root { --primary: #2D8B5E; --primary-light: #3BA870; --primary-dark: #1E6B47; --secondary: #E8F5E9; --accent: #FF8C42; --bg: #F0F4F0; --card-bg: #FFFFFF; --text: #1A1A2E; --text-light: #6B7280; --border: #E5E7EB; --shadow: 0 4px 20px rgba(0,0,0,0.08); }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Tajawal', sans-serif; background: var(--bg); color: var(--text); }
+.sidebar { position: fixed; right: 0; top: 0; width: 260px; height: 100vh; background: var(--card-bg); box-shadow: var(--shadow); z-index: 100; display: flex; flex-direction: column; }
+.sidebar-header { padding: 25px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); }
+.sidebar-header i { font-size: 28px; color: var(--primary); }
+.sidebar-header span { font-size: 22px; font-weight: 800; color: var(--primary); }
+.sidebar-nav { flex: 1; padding: 15px 10px; }
+.nav-item { display: flex; align-items: center; gap: 12px; padding: 14px 18px; margin-bottom: 5px; border-radius: 10px; color: var(--text-light); border: none; background: none; width: 100%; font-family: 'Tajawal'; font-size: 15px; cursor: pointer; }
+.nav-item:hover { background: var(--secondary); color: var(--primary); }
+.nav-item.active { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; }
+.nav-item i { font-size: 18px; width: 24px; text-align: center; }
+.sidebar-footer { padding: 15px; border-top: 1px solid var(--border); }
+.user-info { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 10px; background: var(--bg); border-radius: 10px; }
+.user-info i { font-size: 28px; color: var(--primary); }
+.logout-btn { width: 100%; padding: 10px; background: transparent; border: 2px solid #EF4444; color: #EF4444; border-radius: 10px; font-family: 'Tajawal'; font-weight: 700; cursor: pointer; }
+.logout-btn:hover { background: #EF4444; color: white; }
+.main-content { margin-right: 260px; min-height: 100vh; }
+.top-bar { background: var(--card-bg); padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow); position: sticky; top: 0; z-index: 50; }
+.content-section { display: none; padding: 30px; }
+.content-section.active { display: block; }
+.welcome-card { background: linear-gradient(135deg, var(--primary), var(--primary-light)); border-radius: 16px; padding: 30px; display: flex; justify-content: space-between; color: white; margin-bottom: 25px; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }
+.stat-card { background: var(--card-bg); border-radius: 16px; padding: 25px; display: flex; align-items: center; gap: 15px; box-shadow: var(--shadow); }
+.stat-card i { font-size: 32px; color: var(--primary); width: 50px; height: 50px; background: var(--secondary); border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+.stat-info h3 { font-size: 28px; font-weight: 800; color: var(--primary); }
+.quick-actions { background: var(--card-bg); border-radius: 16px; padding: 25px; box-shadow: var(--shadow); }
+.actions-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
+.action-card { background: var(--bg); border-radius: 10px; padding: 25px; text-align: center; cursor: pointer; border: none; font-family: 'Tajawal'; }
+.action-card:hover { border: 2px solid var(--primary); background: var(--secondary); }
+.action-card i { font-size: 28px; color: var(--primary); margin-bottom: 10px; display: block; }
+.videos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+.video-card { background: var(--card-bg); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); }
+.video-thumbnail { position: relative; height: 180px; background: linear-gradient(135deg, var(--primary-dark), var(--primary)); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.video-thumbnail i { font-size: 50px; color: white; }
+.play-btn { position: absolute; width: 60px; height: 60px; background: rgba(255,255,255,0.9); border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.play-btn i { font-size: 24px; color: var(--primary); }
+.video-info { padding: 18px; }
+.video-meta { display: flex; gap: 15px; margin-top: 10px; color: var(--text-light); font-size: 13px; }
+.video-modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); align-items: center; justify-content: center; }
+.video-modal.show { display: flex; }
+.video-modal-content { width: 80%; max-width: 900px; position: relative; }
+.video-modal-content video { width: 100%; border-radius: 16px; }
+.progress-ring { position: relative; width: 180px; height: 180px; margin: 0 auto; }
+.progress-ring svg { transform: rotate(-90deg); width: 100%; height: 100%; }
+.progress-fill { fill: none; stroke: var(--primary); stroke-width: 8; stroke-linecap: round; stroke-dasharray: 339.292; stroke-dashoffset: 339.292; transition: 1s; }
+.milestone { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg); border-radius: 10px; }
+.milestone.completed { background: var(--secondary); }
+.milestone.completed i { color: var(--primary); }
+.progress-container { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+.progress-card { background: var(--card-bg); border-radius: 16px; padding: 30px; box-shadow: var(--shadow); text-align: center; }
+@media (max-width: 900px) { .sidebar { width: 70px; } .sidebar-header span, .nav-item span, .user-info span { display: none; } .main-content { margin-right: 70px; } .stats-grid { grid-template-columns: repeat(2, 1fr); } .actions-grid { grid-template-columns: repeat(2, 1fr); } .progress-container { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<aside class="sidebar">
+<div class="sidebar-header"><i class="fas fa-leaf"></i><span>HealPath</span></div>
+<nav class="sidebar-nav">
+<button class="nav-item active" onclick="showSection('home')"><i class="fas fa-home"></i><span>الرئيسية</span></button>
+<button class="nav-item" onclick="showSection('videos')"><i class="fas fa-video"></i><span>جلسات الفيديو</span></button>
+<button class="nav-item" onclick="showSection('progress')"><i class="fas fa-chart-line"></i><span>تقدمي</span></button>
+</nav>
+<div class="sidebar-footer">
+<div class="user-info"><i class="fas fa-user-circle"></i><span id="currentUser">المستخدم</span></div>
+<button onclick="logout()" class="logout-btn"><i class="fas fa-sign-out-alt"></i> خروج</button>
+</div>
+</aside>
+
+<main class="main-content">
+<header class="top-bar">
+<h2 id="pageTitle">مرحباً بك في HealPath</h2>
+<div><span id="currentDate"></span></div>
+</header>
+
+<section id="home-section" class="content-section active">
+<div class="welcome-card">
+<div class="welcome-text"><h1>أهلاً <span id="welcomeUser">بك</span>! 👋</h1><p>مسارك نحو التعافي يبدأ من هنا.</p></div>
+<div><i class="fas fa-seedling" style="font-size:60px;opacity:0.3"></i></div>
+</div>
+<div class="stats-grid">
+<div class="stat-card"><i class="fas fa-calendar-check"></i><div class="stat-info"><h3 id="daysCount">0</h3><p>يوم من التعافي</p></div></div>
+<div class="stat-card"><i class="fas fa-video"></i><div class="stat-info"><h3 id="videosWatched">0</h3><p>جلسة شاهدتها</p></div></div>
+<div class="stat-card"><i class="fas fa-fire"></i><div class="stat-info"><h3 id="streakCount">0</h3><p>أيام متتالية</p></div></div>
+<div class="stat-card"><i class="fas fa-heart"></i><div class="stat-info"><h3 id="moodToday">جيد</h3><p>مزاج اليوم</p></div></div>
+</div>
+<div class="quick-actions">
+<h3><i class="fas fa-bolt"></i> إجراءات سريعة</h3>
+<div class="actions-grid">
+<button class="action-card" onclick="showSection('videos')"><i class="fas fa-play-circle"></i><span>شاهد جلسة</span></button>
+<button class="action-card" onclick="showSection('progress')"><i class="fas fa-chart-pie"></i><span>تتبع تقدمك</span></button>
+<button class="action-card" onclick="logMood()"><i class="fas fa-smile"></i><span>سجل مزاجك</span></button>
+<button class="action-card" onclick="showSection('videos')"><i class="fas fa-star"></i><span>جلسات مميزة</span></button>
+</div>
+</div>
+</section>
+
+<section id="videos-section" class="content-section">
+<div style="margin-bottom:25px"><h2><i class="fas fa-video"></i> جلسات الفيديو</h2><p style="color:var(--text-light)">جلسات استرخاء وتأمل جاهزة لك</p></div>
+<div class="videos-grid" id="videosGrid"></div>
+</section>
+
+<section id="progress-section" class="content-section">
+<div style="margin-bottom:25px"><h2><i class="fas fa-chart-line"></i> تقدمي</h2></div>
+<div class="progress-container">
+<div class="progress-card">
+<h3>رحلة التعافي</h3>
+<div class="progress-ring">
+<svg viewBox="0 0 120 120"><circle fill="none" stroke="var(--bg)" stroke-width="8" cx="60" cy="60" r="54"/><circle class="progress-fill" cx="60" cy="60" r="54" id="progressCircle"/></svg>
+<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center"><span id="progressPercent" style="font-size:36px;font-weight:800;color:var(--primary)">0%</span><small style="color:var(--text-light);display:block">مكتمل</small></div>
+</div>
+</div>
+<div class="progress-card" style="text-align:right">
+<h3><i class="fas fa-flag"></i> معالم التعافي</h3>
+<div style="display:flex;flex-direction:column;gap:15px;margin-top:20px">
+<div class="milestone completed"><i class="fas fa-check-circle"></i><span>اليوم الأول</span></div>
+<div class="milestone"><i class="fas fa-circle" style="color:var(--border)"></i><span>أسبوع كامل</span></div>
+<div class="milestone"><i class="fas fa-circle" style="color:var(--border)"></i><span>شهر كامل</span></div>
+<div class="milestone"><i class="fas fa-circle" style="color:var(--border)"></i><span>3 أشهر</span></div>
+<div class="milestone"><i class="fas fa-circle" style="color:var(--border)"></i><span>6 أشهر</span></div>
+<div class="milestone"><i class="fas fa-circle" style="color:var(--border)"></i><span>سنة كاملة</span></div>
+</div>
+</div>
+</div>
+</section>
+</main>
+
+<script>
+const API_URL = '';
+let currentUser = null;
+let token = localStorage.getItem('healpath_token');
+
+async function checkAuth() {
+    if (!token) { window.location.href = '/'; return; }
+    try {
+        const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!res.ok) throw new Error('Unauthorized');
+        currentUser = await res.json();
+        initDashboard();
+    } catch { localStorage.removeItem('healpath_token'); window.location.href = '/'; }
+}
+
+function initDashboard() {
+    if (!currentUser) return;
+    document.getElementById('currentUser').textContent = currentUser.username;
+    document.getElementById('welcomeUser').textContent = currentUser.username;
+    updateStats();
+    loadVideos();
+    updateDate();
+    updateProgress();
+}
+
+function updateStats() {
+    if (!currentUser) return;
+    document.getElementById('daysCount').textContent = currentUser.daysRecovery || 0;
+    document.getElementById('videosWatched').textContent = currentUser.videosWatched || 0;
+    document.getElementById('streakCount').textContent = currentUser.streak || 0;
+}
+
+function updateDate() {
+    document.getElementById('currentDate').textContent = new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function showSection(sectionId) {
+    document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById(sectionId + '-section').classList.add('active');
+    document.querySelectorAll('.nav-item').forEach((item, idx) => {
+        const sections = ['home', 'videos', 'progress'];
+        if (sections[idx] === sectionId) item.classList.add('active');
+    });
+    const titles = { home: 'مرحباً بك في HealPath', videos: 'جلسات الفيديو', progress: 'تقدمي' };
+    document.getElementById('pageTitle').textContent = titles[sectionId] || 'HealPath';
+}
+
+function logout() { localStorage.removeItem('healpath_token'); window.location.href = '/'; }
+
+async function loadVideos() {
+    const grid = document.getElementById('videosGrid');
+    if (!grid) return;
+    try {
+        const res = await fetch('/api/videos');
+        const videos = await res.json();
+        grid.innerHTML = '';
+        videos.forEach(video => {
+            const div = document.createElement('div');
+            div.className = 'video-card';
+            div.innerHTML = '<div class="video-thumbnail" onclick="playVideo(\'' + video.id + '\',\'' + video.src + '\')"><i class="fas fa-video"></i><div class="play-btn"><i class="fas fa-play"></i></div></div><div class="video-info"><h4>' + video.title + '</h4><p>' + video.desc + '</p><div class="video-meta"><span><i class="fas fa-clock"></i> ' + video.duration + '</span><span><i class="fas fa-eye"></i> ' + (video.views || 0) + ' مشاهدة</span></div></div>';
+            grid.appendChild(div);
+        });
+    } catch (err) { console.error('Error:', err); }
+}
+
+function playVideo(videoId, src) {
+    const modal = document.createElement('div');
+    modal.className = 'video-modal show';
+    modal.innerHTML = '<div class="video-modal-content"><span onclick="closeVideo()" style="position:absolute;top:-50px;left:0;color:white;font-size:35px;cursor:pointer">&times;</span><video controls autoplay><source src="' + src + '" type="video/mp4">متصفحك لا يدعم تشغيل الفيديو</video></div>';
+    document.body.appendChild(modal);
+    modal.onclick = function(e) { if (e.target === modal) closeVideo(); };
+    // تسجيل المشاهدة للمستخدم المسجل
+    if (token) {
+        fetch('/api/videos/' + videoId + '/watch', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } });
+    }
+}
+
+function closeVideo() { const modal = document.querySelector('.video-modal'); if (modal) modal.remove(); }
+
+function updateProgress() {
+    if (!currentUser) return;
+    const days = currentUser.daysRecovery || 0;
+    const progress = Math.min((days / 365) * 100, 100);
+    const circle = document.getElementById('progressCircle');
+    if (circle) { const c = 2 * Math.PI * 54; circle.style.strokeDashoffset = c - (progress / 100) * c; }
+    document.getElementById('progressPercent').textContent = Math.round(progress) + '%';
+    const milestones = document.querySelectorAll('.milestone');
+    const milestonesDays = [1, 7, 30, 90, 180, 365];
+    milestones.forEach((m, i) => { if (days >= milestonesDays[i]) { m.classList.add('completed'); m.querySelector('i').className = 'fas fa-check-circle'; m.querySelector('i').style.color = 'var(--primary)'; } });
+}
+
+function logMood() {
+    const moods = ['😊 سعيد', '😐 عادي', '😔 حزين', '😰 قلق', '💪 قوي'];
+    const mood = prompt('كيف تشعر اليوم؟\n1. سعيد\n2. عادي\n3. حزين\n4. قلق\n5. قوي');
+    if (mood && mood >= 1 && mood <= 5) {
+        document.getElementById('moodToday').textContent = moods[mood - 1].split(' ')[1];
+        showNotification('تم تسجيل مزاجك: ' + moods[mood - 1], 'success');
+    }
+}
+
+function showNotification(message, type) {
+    const notif = document.createElement('div');
+    notif.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:15px 30px;border-radius:10px;color:white;font-weight:700;z-index:9999;background:' + (type === 'success' ? '#2D8B5E' : '#EF4444');
+    notif.textContent = message;
+    document.body.appendChild(notif);
+    setTimeout(() => notif.remove(), 3000);
+}
+
+checkAuth();
+</script>
+</body>
+</html>`;
+
 // ===== الصفحات =====
 app.get('/', (req, res) => res.send(LOGIN_PAGE));
-
-app.get('/dashboard', (req, res) => {
-    const dashboardPath = path.join(PUBLIC_DIR, 'dashboard.html');
-    if (fs.existsSync(dashboardPath)) {
-        res.sendFile(dashboardPath);
-    } else {
-        res.status(404).send('dashboard.html not found. Please create public/dashboard.html');
-    }
-});
+app.get('/dashboard', (req, res) => res.send(DASHBOARD_PAGE));
 
 // ===== تشغيل السيرفر =====
 app.listen(PORT, () => {
