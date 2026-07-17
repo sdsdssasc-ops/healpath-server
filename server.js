@@ -118,17 +118,38 @@ app.get('/api/me', authMiddleware, (req, res) => {
     });
 });
 
-// ===== API: الفيديوهات (للجميع) =====
+// ===== API: الفيديوهات (يقرأ من المجلد تلقائياً) =====
 app.get('/api/videos', (req, res) => {
-    const videos = [
-        { id: '1', title: 'جلسة التنفس العميق', desc: 'تعلم تقنيات التنفس للاسترخاء', duration: '15:30', src: '/videos/video1.mp4', views: 1240 },
-        { id: '2', title: 'التأمل الصباحي', desc: 'ابدأ يومك بهدوء وتركيز', duration: '10:00', src: '/videos/video2.mp4', views: 890 },
-        { id: '3', title: 'تمارين الاسترخاء', desc: 'تخلص من التوتر والقلق', duration: '20:45', src: '/videos/video3.mp4', views: 2100 },
-        { id: '4', title: 'النوم الصحي', desc: 'نصائح لنوم هادئ ومريح', duration: '12:15', src: '/videos/video4.mp4', views: 1560 },
-        { id: '5', title: 'التحكم بالغضب', desc: 'تقنيات إدارة الغضب بفعالية', duration: '18:20', src: '/videos/video5.mp4', views: 980 },
-        { id: '6', title: 'التفكير الإيجابي', desc: 'بني عقلية إيجابية', duration: '14:50', src: '/videos/video6.mp4', views: 3200 }
-    ];
-    res.json(videos);
+    try {
+        const files = fs.readdirSync(VIDEOS_DIR);
+        const videoExts = ['.mp4', '.webm', '.ogg', '.mov', '.mkv'];
+        const videoFiles = files.filter(f => videoExts.includes(path.extname(f).toLowerCase()));
+
+        if (videoFiles.length === 0) {
+            return res.json([]);
+        }
+
+        const videos = videoFiles.map((file, index) => {
+            const name = file.replace(path.extname(file), '');
+            // نحاول نستخرج مدة الفيديو لو موجودة بالاسم (مثال: video_15min.mp4)
+            const durationMatch = name.match(/_(\d+)min$/);
+            const duration = durationMatch ? durationMatch[1] + ':00' : '00:00';
+
+            return {
+                id: (index + 1).toString(),
+                title: name.replace(/_/g, ' ').replace(/-\d+min$/, '').replace(/\d+min$/, ''),
+                desc: 'جلسة فيديو',
+                duration: duration,
+                src: '/videos/' + file,
+                views: Math.floor(Math.random() * 5000) + 500
+            };
+        });
+
+        res.json(videos);
+    } catch (err) {
+        console.error('Error reading videos:', err);
+        res.json([]);
+    }
 });
 
 // ===== API: مشاهدة فيديو =====
@@ -139,7 +160,7 @@ app.post('/api/videos/:id/watch', authMiddleware, (req, res) => {
     res.json({ success: true });
 });
 
-// ===== صفحة تسجيل الدخول =====
+// ===== الصفحات =====
 app.get('/', (req, res) => {
     res.sendFile(path.join(PUBLIC_DIR, 'login.html'));
 });
