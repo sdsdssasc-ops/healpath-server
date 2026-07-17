@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HealPath - تسجيل الدخول</title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+:root{--primary:#2D8B5E;--primary-light:#3BA870;--card-bg:#FFFFFF;--bg:#F0F4F0;--text:#1A1A2E;--text-light:#6B7280;--border:#E5E7EB}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Tajawal',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1E6B47 0%,#2D8B5E 50%,#3BA870 100%)}
+.login-box{background:var(--card-bg);border-radius:16px;padding:40px;width:100%;max-width:420px;box-shadow:0 10px 40px rgba(0,0,0,0.12);margin:20px}
+.logo{text-align:center;margin-bottom:35px}
+.logo i{font-size:50px;color:var(--primary);margin-bottom:10px;display:block}
+.logo h1{font-size:32px;font-weight:800;color:var(--primary)}
+.logo p{color:var(--text-light);font-size:15px}
+.input-group{position:relative;margin-bottom:20px}
+.input-group i{position:absolute;right:16px;top:50%;transform:translateY(-50%);color:var(--text-light)}
+.input-group input{width:100%;padding:14px 45px 14px 16px;border:2px solid var(--border);border-radius:10px;font-family:'Tajawal',sans-serif;font-size:15px;background:var(--bg)}
+.input-group input:focus{outline:none;border-color:var(--primary)}
+.login-btn{width:100%;padding:14px;background:linear-gradient(135deg,var(--primary),var(--primary-light));color:white;border:none;border-radius:10px;font-family:'Tajawal',sans-serif;font-size:16px;font-weight:700;cursor:pointer}
+.register-link{text-align:center;margin-top:20px;color:var(--text-light);font-size:14px}
+.register-link a{color:var(--primary);text-decoration:none;font-weight:700}
+.notification{position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:15px 30px;border-radius:10px;color:white;font-weight:700;z-index:9999}
+</style>
+<base target="_blank">
+</head>
+<body>
+<div class="login-box">
+<div class="logo"><i class="fas fa-leaf"></i><h1>HealPath</h1><p>مسارك نحو التعافي</p></div>
+<form id="loginForm">
+<div class="input-group"><i class="fas fa-user"></i><input type="text" id="username" placeholder="اسم المستخدم" required></div>
+<div class="input-group"><i class="fas fa-lock"></i><input type="password" id="password" placeholder="كلمة المرور" required></div>
+<button type="submit" class="login-btn" id="loginBtn"><i class="fas fa-sign-in-alt"></i> دخول</button>
+</form>
+<p class="register-link">ما عندك حساب؟ <a href="#" onclick="showRegister()">سجل الآن</a></p>
+</div>
+<div id="registerModal" style="display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.5);align-items:center;justify-content:center">
+<div style="background:white;padding:30px;border-radius:16px;width:90%;max-width:400px;position:relative">
+<span onclick="closeRegister()" style="position:absolute;left:20px;top:20px;font-size:28px;cursor:pointer">&times;</span>
+<h2 style="color:#2D8B5E;margin-bottom:20px"><i class="fas fa-user-plus"></i> تسجيل حساب جديد</h2>
+<form id="registerForm">
+<div class="input-group"><i class="fas fa-user"></i><input type="text" id="regUsername" placeholder="اسم المستخدم" required></div>
+<div class="input-group"><i class="fas fa-lock"></i><input type="password" id="regPassword" placeholder="كلمة المرور" required></div>
+<button type="submit" class="login-btn"><i class="fas fa-check"></i> تسجيل</button>
+</form>
+</div>
+</div>
+<script>
+function showNotification(m,t){const n=document.createElement('div');n.className='notification';n.style.background=t==='success'?'#2D8B5E':'#EF4444';n.textContent=m;document.body.appendChild(n);setTimeout(()=>n.remove(),3000)}
+function showRegister(){document.getElementById('registerModal').style.display='flex'}
+function closeRegister(){document.getElementById('registerModal').style.display='none'}
+document.getElementById('loginForm').addEventListener('submit',async function(e){e.preventDefault();try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('username').value.trim(),password:document.getElementById('password').value})});const d=await r.json();if(r.ok){localStorage.setItem('healpath_token',d.token);localStorage.setItem('healpath_user',JSON.stringify(d.user));showNotification('تم تسجيل الدخول!','success');setTimeout(()=>window.location.href='/dashboard',500)}else{showNotification(d.error||'خطأ','error')}}catch(err){showNotification('خطأ في الاتصال','error')}});
+document.getElementById('registerForm').addEventListener('submit',async function(e){e.preventDefault();const u=document.getElementById('regUsername').value.trim(),p=document.getElementById('regPassword').value;if(u.length<3){showNotification('اسم المستخدم قصير','error');return}if(p.length<4){showNotification('كلمة المرور قصيرة','error');return}try{const r=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});const d=await r.json();if(r.ok){localStorage.setItem('healpath_token',d.token);localStorage.setItem('healpath_user',JSON.stringify(d.user));showNotification('تم إنشاء الحساب!','success');setTimeout(()=>window.location.href='/dashboard',500)}else{showNotification(d.error||'خطأ','error')}}catch(err){showNotification('خطأ في الاتصال','error')}});
+</script>
+</body>
+</html>
