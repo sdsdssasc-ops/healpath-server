@@ -59,6 +59,8 @@
         .video-modal-content { width: 80%; max-width: 900px; position: relative; }
         .video-modal-content video { width: 100%; border-radius: 16px; }
         .notification { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 15px 30px; border-radius: 10px; color: white; font-weight: 700; z-index: 9999; }
+        .no-videos { text-align: center; padding: 60px 20px; color: var(--text-light); }
+        .no-videos i { font-size: 60px; color: var(--border); margin-bottom: 15px; display: block; }
         @media (max-width: 900px) { .sidebar { width: 70px; } .sidebar-header span, .nav-item span, .user-info span { display: none; } .main-content { margin-right: 70px; } .stats-grid { grid-template-columns: repeat(2, 1fr); } .actions-grid { grid-template-columns: repeat(2, 1fr); } .progress-container { grid-template-columns: 1fr; } }
     </style>
 <base target="_blank">
@@ -156,7 +158,6 @@
 
         function initDashboard() {
             if (!currentUser) return;
-            // تحديث اسم المستخدم في كل مكان
             document.getElementById('currentUser').textContent = currentUser.username;
             document.getElementById('welcomeUser').textContent = currentUser.username;
             updateStats();
@@ -197,13 +198,22 @@
                 const res = await fetch('/api/videos');
                 const videos = await res.json();
                 grid.innerHTML = '';
+
+                if (videos.length === 0) {
+                    grid.innerHTML = '<div class="no-videos" style="grid-column:1/-1"><i class="fas fa-film"></i><h3>لا توجد فيديوهات</h3><p>أضف فيديوهات إلى مجلد public/videos</p></div>';
+                    return;
+                }
+
                 videos.forEach(video => {
                     const div = document.createElement('div');
                     div.className = 'video-card';
                     div.innerHTML = '<div class="video-thumbnail" onclick="playVideo(\'' + video.id + '\',\'' + video.src + '\')"><i class="fas fa-video"></i><div class="play-btn"><i class="fas fa-play"></i></div></div><div class="video-info"><h4>' + video.title + '</h4><p>' + video.desc + '</p><div class="video-meta"><span><i class="fas fa-clock"></i> ' + video.duration + '</span><span><i class="fas fa-eye"></i> ' + (video.views || 0) + ' مشاهدة</span></div></div>';
                     grid.appendChild(div);
                 });
-            } catch (err) { console.error('Error loading videos:', err); }
+            } catch (err) { 
+                console.error('Error loading videos:', err); 
+                grid.innerHTML = '<div class="no-videos" style="grid-column:1/-1"><i class="fas fa-exclamation-circle"></i><h3>خطأ في تحميل الفيديوهات</h3></div>';
+            }
         }
 
         function playVideo(videoId, src) {
@@ -254,7 +264,6 @@
             setTimeout(() => notif.remove(), 3000);
         }
 
-        // شغل التحقق لما الصفحة تحمل
         document.addEventListener('DOMContentLoaded', checkAuth);
     </script>
 </body>
